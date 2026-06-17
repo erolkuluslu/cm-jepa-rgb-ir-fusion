@@ -31,7 +31,7 @@ Email: akuluslu54@gmail.com}}
 \maketitle
 
 \begin{abstract}
-Visible-spectrum perception degrades under night, fog, rain, smoke, and illumination shift, while thermal infrared sensors preserve complementary target information but lack color and fine texture. This work studies whether a lightweight cross-modal fusion module can improve downstream object detection and semantic segmentation when the downstream models are kept small and unmodified. A dual-branch RGB/IR fusion architecture with channel attention, spatial gating, and a cross-modal joint-embedding predictive architecture (CM-JEPA) objective is evaluated on a real RGB/IR manifest containing 6025 aligned pairs from M3FD, MSRS, and RoadScene. Detection is evaluated with YOLO11n on M3FD, segmentation with U-Net/MobileNetV2 on MSRS, and fusion quality with entropy, spatial frequency, average gradient, and normalized mutual information. The final implementation uses a gate-guided representation, \(\Ia=\G \odot \RGB + (1-\G)\odot \mathrm{rep}(\IR)\), because direct use of the raw decoder output caused visual collapse. Results show that fusion is beneficial but that the simplest average fusion is the most stable overall method. Average fusion achieved the best detection mAP@0.5 (0.7718), best mAP@0.5:0.95 (0.5115), and best segmentation mIoU (0.5551). The proposed CM-JEPA gate-blend model was competitive for detection (mAP@0.5:0.95 = 0.5080), but underperformed in segmentation (mIoU = 0.4774). The study therefore supports RGB/IR fusion for lightweight perception, but also shows that classical fusion metrics and learned fusion complexity do not automatically translate into stronger downstream performance.
+This study evaluates RGB/infrared fusion for lightweight object detection and semantic segmentation, with particular attention to whether a learned cross-modal module improves over simple fusion. The main empirical finding is deliberately conservative: under the verified experimental protocol, pixel-level average fusion is the strongest overall representation. A dual-branch RGB/IR model with channel attention, spatial gating, and a cross-modal joint-embedding predictive architecture (CM-JEPA) objective is evaluated on 6025 aligned pairs from M3FD, MSRS, and RoadScene. YOLO11n is used for detection on M3FD, U-Net/MobileNetV2 for semantic segmentation on MSRS, and entropy, spatial frequency, average gradient, and normalized mutual information for image-level fusion diagnostics. The final proposed output is a gate-guided representation, \(\Ia=\G \odot \RGB + (1-\G)\odot \mathrm{rep}(\IR)\), because the raw decoder output could collapse visually. Average fusion achieved the best detection mAP@0.5 (0.7718), mAP@0.5:0.95 (0.5115), and segmentation mIoU (0.5551). CM-JEPA gate-blend was competitive for strict detection localization (mAP@0.5:0.95 = 0.5080), but weaker for segmentation (mIoU = 0.4774). The results support RGB/IR fusion for lightweight perception, but they also show that learned fusion complexity and image-level fusion metrics do not automatically imply superior downstream performance.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -39,132 +39,152 @@ RGB-infrared fusion, joint-embedding predictive architecture, attention, YOLO11,
 \end{IEEEkeywords}
 
 \section{Introduction}
-Robust visual perception is a central requirement for intelligent transportation, surveillance, autonomous mobile robots, and campus-scale monitoring systems. A visible RGB camera captures rich texture, color, and edge information, but it is highly dependent on illumination and is vulnerable to low light, rain, fog, smoke, glare, and other adverse conditions. Infrared (IR) sensing, in contrast, detects thermal radiation and can reveal pedestrians, vehicles, and other heat-related targets when visible imagery becomes unreliable. However, IR imagery usually has lower texture richness, limited semantic color cues, and sometimes weaker object boundaries. These complementary strengths motivate infrared-visible image fusion (IVIF), where RGB and IR streams are combined into a representation that is intended to improve human interpretability and downstream computer vision.
+Robust visual perception is central to intelligent transportation, surveillance, mobile robotics, and safety-oriented monitoring. Visible RGB cameras preserve color, texture, and fine edge structure, but their reliability decreases under low illumination, fog, rain, smoke, glare, and strong contrast changes. Infrared (IR) imaging captures thermal responses and can reveal pedestrians, vehicles, and lamps when visible imagery is degraded. However, IR imagery usually has weaker texture, limited color semantics, and sometimes coarse object boundaries. Infrared-visible image fusion (IVIF) therefore aims to combine complementary sensing properties into a representation that improves human inspection and downstream computer vision.
 
-Most IVIF research has focused on image-level quality or on relatively heavy architectures. DenseFuse introduced a deep autoencoder paradigm for IVIF \cite{li2019densefuse}. Task-aware methods such as SeAFusion and TarDAL explicitly connected fusion to high-level vision tasks including segmentation and object detection \cite{tang2022seafusion,liu2022tardal}. More recent approaches such as CDDFuse and MRFS introduced decomposition, correlation, and mutually reinforcing task constraints \cite{zhao2023cddfuse,zhang2024mrfs}. Parallel work in RGB-X perception, such as CMX, demonstrated the value of cross-modal interaction for semantic segmentation \cite{zhang2023cmx}. Despite this progress, an important practical question remains: do learned RGB/IR fusion mechanisms help when the downstream models are lightweight, the evaluation is task-driven, and the same fused image must serve both object detection and semantic segmentation?
+Recent IVIF work has produced increasingly sophisticated learned fusion models. DenseFuse introduced an autoencoder-based fusion paradigm \cite{li2019densefuse}; task-aware methods such as SeAFusion and TarDAL connected fusion to segmentation and detection \cite{tang2022seafusion,liu2022tardal}; and CDDFuse and MRFS introduced decomposition, correlation, and mutually reinforcing task objectives \cite{zhao2023cddfuse,zhang2024mrfs}. These studies motivate learned cross-modal fusion, but they also make a practical question sharper: when downstream models are deliberately lightweight and unchanged, is a learned fused image more useful than simple average fusion?
 
-This work addresses that question through a controlled comparison study. A cross-modal attention-based fusion model is implemented with dual encoders, SE-style channel attention \cite{hu2018senet}, spatial gating inspired by attention modules such as CBAM \cite{woo2018cbam}, and a JEPA-style representation prediction objective \cite{assran2023ijepa}. The model is compared with RGB-only, IR-only, and average fusion baselines. Instead of evaluating only classical fusion metrics, the fused representations are used as inputs to two lightweight downstream models: YOLO11n for detection \cite{ultralytics2024yolo11} and U-Net with a MobileNetV2 encoder for segmentation \cite{ronneberger2015unet,sandler2018mobilenetv2}. The final report revises the original proposal by incorporating real experimental outcomes from the final Colab implementation.
+This project addresses that question through a controlled experimental study. A cross-modal attention model is implemented with dual encoders, SE-style channel attention \cite{hu2018senet}, a spatial gate inspired by attention modules such as CBAM \cite{woo2018cbam}, and a JEPA-style latent prediction objective \cite{assran2023ijepa}. The method is compared with RGB-only, IR-only, and average fusion. Instead of relying only on classical image-quality metrics, the same fused representations are evaluated with YOLO11n detection \cite{ultralytics2024yolo11} and U-Net/MobileNetV2 segmentation \cite{ronneberger2015unet,sandler2018mobilenetv2}.
 
 The contributions are as follows:
 \begin{itemize}
-    \item A complete real-data RGB/IR fusion pipeline was built and evaluated over 6025 aligned pairs from M3FD, MSRS, and RoadScene.
-    \item The study compares RGB-only, IR-only, average fusion, learned attention fusion variants, and the final CM-JEPA gate-blend representation under the same evaluation framework.
-    \item Detection and segmentation are evaluated with lightweight downstream models, making the results relevant to edge-oriented perception rather than only image-fusion benchmarking.
-    \item The analysis shows that average fusion is the strongest overall baseline, while CM-JEPA gate-blend is detection-competitive but segmentation-weak.
-    \item A corrected A7 evaluation protocol is introduced: the CM-JEPA representation is measured using the same gate-blend image used by downstream tasks, not the collapsed raw decoder output.
+    \item A complete real-data RGB/IR fusion pipeline was built over 6025 aligned pairs from M3FD, MSRS, and RoadScene.
+    \item The study reports a negative but informative result: average fusion is the strongest overall baseline under the verified downstream protocol.
+    \item CM-JEPA gate-blend is evaluated with the same fused image for image metrics, YOLO, and U-Net, correcting an earlier raw-decoder evaluation inconsistency.
+    \item A0-A7 ablations are reported, while the downstream scope of A3-A6 is explicitly limited to avoid overgeneralizing from fusion-only metrics.
+    \item The analysis connects failure modes to representation collapse, low-resolution gating, downstream task requirements, and the weak relationship between image-level fusion metrics and task performance.
 \end{itemize}
 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.96\textwidth]{figures/figure_pipeline.pdf}
-    \caption{End-to-end experimental pipeline. RGB/IR data are standardized into paired manifests, evaluated through classical baselines and the proposed CM-JEPA gate-blend representation, and then tested with both image-level fusion metrics and downstream lightweight perception tasks.}
+    \caption{End-to-end experimental pipeline. Paired RGB/IR data are standardized into manifests, processed by simple baselines and the proposed CM-JEPA gate-blend representation, and evaluated with both image-level fusion metrics and lightweight downstream perception tasks.}
     \label{fig:pipeline}
 \end{figure*}
 
 \section{Related Work}
-\subsection{Classical and Deep Infrared-Visible Fusion}
-Classical fusion methods such as Laplacian pyramid fusion decompose images into multi-scale representations and combine coefficients with deterministic rules \cite{burt1983laplacian}. These methods are simple, transparent, and parameter-free, but they cannot adapt to task-specific semantics. Deep learning methods shifted IVIF toward data-driven feature extraction. DenseFuse used an autoencoder with dense connections to reconstruct fused images from visible and infrared features \cite{li2019densefuse}. Later, CDDFuse decomposed features into modality-shared and modality-specific components and used correlation-driven constraints to improve decomposition quality \cite{zhao2023cddfuse}. These works improved visual fusion quality, but their metrics do not always guarantee improved detection or segmentation.
+\subsection{Infrared-Visible Fusion}
+Classical methods such as Laplacian pyramid fusion combine multi-scale image coefficients using deterministic rules \cite{burt1983laplacian}. They are transparent and parameter-free, but they do not adapt to semantic task objectives. Deep IVIF methods learn fusion representations from data. DenseFuse uses a dense autoencoder to fuse visible and infrared features \cite{li2019densefuse}. CDDFuse decomposes features into shared and modality-specific components and constrains the decomposition through correlation-driven learning \cite{zhao2023cddfuse}. These approaches are important references for learned fusion, but their image-quality improvements do not necessarily guarantee stronger object detection or semantic segmentation.
 
-\subsection{Task-Aware Fusion}
-Task-aware fusion explicitly optimizes for high-level perception. SeAFusion connected image fusion with semantic segmentation so that semantic supervision could guide the fusion network \cite{tang2022seafusion}. TarDAL introduced target-aware dual adversarial learning and the M3FD benchmark for detection-oriented fusion \cite{liu2022tardal}. MRFS further coupled fusion and segmentation with mutual reinforcement \cite{zhang2024mrfs}. These works motivate the central design choice of this project: a fusion method should not be judged only by entropy or contrast, but by whether it improves downstream perception.
+\subsection{Task-Aware and Cross-Modal Perception}
+Task-aware methods directly optimize fusion for high-level vision. SeAFusion introduces semantic supervision into real-time IVIF \cite{tang2022seafusion}. TarDAL proposes target-aware dual adversarial learning and the M3FD benchmark for detection-oriented fusion \cite{liu2022tardal}. MRFS jointly reinforces fusion and segmentation \cite{zhang2024mrfs}. In RGB-X perception, CMX demonstrates the value of cross-modal interaction for semantic segmentation \cite{zhang2023cmx}. Compared with these larger or more task-coupled systems, the present work deliberately uses a modular fused-image adapter so that standard YOLO11n and U-Net/MobileNetV2 can remain unchanged. This design makes the comparison practical and reproducible, but it also limits how strongly the fusion model can be optimized for a particular downstream task.
 
-\subsection{Cross-Modal Attention and Lightweight Perception}
-Attention mechanisms are natural tools for RGB/IR fusion because the reliability of each modality varies spatially and semantically. SE-Net recalibrates channels according to global statistics \cite{hu2018senet}, while CBAM sequentially applies channel and spatial attention \cite{woo2018cbam}. CMX generalizes cross-modal transformer fusion to RGB-X segmentation \cite{zhang2023cmx}. In this project, the attention block is kept deliberately lightweight so that the downstream models can remain small. YOLO11n is used as the detection model, and U-Net/MobileNetV2 is used as the segmentation model. This emphasizes whether fusion helps practical lightweight perception, not whether a large downstream architecture can hide weaknesses in the fusion representation.
-
-\subsection{JEPA-Style Self-Supervision}
-Joint-embedding predictive architectures learn representations by predicting latent target representations from context representations rather than reconstructing pixels directly \cite{assran2023ijepa}. This idea is attractive for RGB/IR fusion because it can encourage semantic consistency across modalities. However, this project found an important implementation caveat: the raw decoder image of a CM-JEPA fusion module can visually collapse. Therefore, the final representation uses the learned gate for RGB/IR blending rather than the raw decoder output. This is not merely a cosmetic choice; it is essential for valid downstream evaluation.
+\subsection{JEPA-Style Representation Learning}
+Joint-embedding predictive architectures learn by predicting target representations from context representations rather than reconstructing pixels \cite{assran2023ijepa}. This is conceptually attractive for RGB/IR fusion because visible and thermal images measure different physical properties. A latent prediction objective can encourage shared scene structure without forcing one modality to reconstruct the other pixel-by-pixel. However, the present experiments show that JEPA-style representation learning is not sufficient by itself. The raw decoder path could collapse into a low-variance image, and the final valid representation had to use the learned gate as an image-level RGB/IR blend. The anti-collapse terms follow the general motivation of variance and covariance regularization \cite{bardes2021vicreg}, but the results indicate that task-aware supervision is still necessary for dense semantic preservation.
 
 \section{Materials and Methods}
 \subsection{Datasets and Standardized Manifest}
-The final real-data manifest contains 6025 aligned RGB/IR pairs. The dataset composition is shown in Fig.~\ref{fig:data}. M3FD contributes 4280 pairs and is used for object detection with six YOLO classes: people, car, bus, motorcycle, truck, and lamp. MSRS contributes 1524 standardized pairs, among which 1444 valid mask-bearing samples are used for segmentation. RoadScene contributes 221 paired samples for fusion-quality and general fusion analysis. The overall manifest split contains 4215 training, 902 validation, and 908 test pairs. For the M3FD detection subset, the saved YOLO split contains 2994 training, 641 validation, and 645 test images for each RGB, IR, average, and proposed representation.
+The verified manifest contains 6025 aligned RGB/IR pairs. M3FD contributes 4280 pairs and is used for object detection with six YOLO classes: people, car, bus, motorcycle, truck, and lamp. MSRS contributes 1524 standardized pairs, among which 1444 valid mask-bearing samples are used for segmentation. RoadScene contributes 221 paired samples for fusion-quality and qualitative analysis. The overall split contains 4215 training, 902 validation, and 908 test pairs. The M3FD YOLO split contains 2994 training, 641 validation, and 645 test images for each evaluated representation.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{figures/figure_dataset_counts.pdf}
-    \caption{Dataset and split statistics after standardization. The real-data manifest contains 6025 RGB/IR pairs across M3FD, MSRS, and RoadScene.}
+    \caption{Dataset and split statistics after standardization. The manifest contains 6025 RGB/IR pairs across M3FD, MSRS, and RoadScene.}
     \label{fig:data}
 \end{figure}
 
-\subsection{Baselines}
-Four downstream inputs are compared. RGB-only uses the visible image directly:
+\subsection{Baselines and Evaluation Scope}
+The downstream comparison includes RGB-only \(I_{A0}=\RGB\), IR-only \(I_{A1}=\mathrm{rep}(\IR)\), average fusion
 \begin{equation}
-I_{A0}=\RGB .
-\end{equation}
-IR-only replicates the infrared image into three channels:
-\begin{equation}
-I_{A1}=\mathrm{rep}(\IR).
-\end{equation}
-Average fusion computes a simple pixel-level combination:
-\begin{equation}
-I_{A2}=\frac{1}{2}\RGB + \frac{1}{2}\mathrm{rep}(\IR).
+I_{A2}=\frac{1}{2}\RGB + \frac{1}{2}\mathrm{rep}(\IR),
 \label{eq:avg}
 \end{equation}
-This average baseline is intentionally simple. If a learned fusion method cannot outperform it, its complexity must be justified through other advantages such as robustness or task specificity.
+and the final CM-JEPA gate-blend representation. Average fusion is intentionally retained as a strong low-complexity baseline. If a learned model cannot outperform it, the learned model must be justified through robustness, interpretability, or future task coupling rather than architectural novelty alone.
 
-\subsection{Proposed CM-JEPA Gate-Blend Fusion}
-The proposed model uses two modality-specific encoders, channel attention, and a spatial gate. Let \(F_R\) and \(F_I\) be RGB and IR feature tensors. Channel attention produces recalibrated features \(F'_R\) and \(F'_I\). A spatial gate is then estimated as
+Learned SOTA methods such as DenseFuse and CDDFuse are discussed as contextual references rather than reported as same-protocol numeric baselines. They were not executed through the verified YOLO/U-Net pipeline in this submission, and no DenseFuse or CDDFuse task metrics are claimed. This is an important boundary of the study: the results show that average fusion outperformed the implemented CM-JEPA gate-blend model under this protocol, not that average fusion is universally superior to all learned IVIF methods.
+
+\subsection{CM-JEPA Gate-Blend Fusion}
+Let \(F_R\) and \(F_I\) denote RGB and IR feature tensors from separate encoders. Channel attention produces \(F'_R\) and \(F'_I\). A spatial gate is estimated as
 \begin{equation}
 G = \sigma\left(\phi([F'_R,F'_I])\right),
 \end{equation}
-where \([\cdot,\cdot]\) denotes concatenation, \(\phi\) is a lightweight convolutional gate predictor, and \(\sigma\) is the sigmoid function. The latent fusion is
+where \([\cdot,\cdot]\) denotes concatenation, \(\phi\) is a lightweight convolutional gate predictor, and \(\sigma\) is a sigmoid. The latent fusion is
 \begin{equation}
 F_{ctx}=G\odot F'_R+(1-G)\odot F'_I.
 \label{eq:latentfusion}
 \end{equation}
-The initial implementation decoded \(F_{ctx}\) into a 3-channel image through a feature adapter. During evaluation, however, the raw decoder image could collapse into a low-variance gray output. The final code therefore uses the gate consistently at image level:
+Although a feature adapter decodes \(F_{ctx}\) into a 3-channel image during training, the raw decoder output was not reliable as the final fused representation. The evaluated proposed image is therefore
 \begin{equation}
 \Ia=\G\odot\RGB+(1-\G)\odot\mathrm{rep}(\IR),
 \label{eq:gateblend}
 \end{equation}
-where \(\G\) is the upsampled spatial gate. This representation is used for YOLO, U-Net, and the repaired A7 fusion-quality metrics.
+where \(\G\) is the spatial gate upsampled to image resolution. This same representation is used for fusion metrics, YOLO, and U-Net.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{figures/figure_architecture.pdf}
-    \caption{Simplified architecture of the final proposed representation. The final downstream input is a gate-guided RGB/IR blend rather than the raw decoder output.}
+    \caption{Final proposed representation. The learned gate is used to blend RGB and replicated IR at image level; the raw decoder output is not used for final downstream evaluation.}
     \label{fig:arch}
 \end{figure}
 
-\subsection{Losses and Training Objectives}
-The fusion module is trained with a fusion loss and a JEPA-style representation loss. The fusion loss contains intensity and gradient terms:
+\subsection{Objectives and Training}
+The fusion objective combines intensity and gradient preservation:
 \begin{equation}
 \mathcal{L}_{fus}=\|I_f-I_{ref}\|_1+\lambda_g\|\nabla I_f-\nabla I_{ref}\|_1,
 \end{equation}
-where \(I_{ref}\) is a modality-derived reference target and \(\lambda_g=5.0\) in the final configuration. The JEPA component predicts target latent tokens from context tokens:
+with \(\lambda_g=5.0\). The JEPA component predicts target latent tokens from context tokens:
 \begin{equation}
 \mathcal{L}_{jepa}=\|p(z_c)-\mathrm{sg}(z_t)\|_2^2,
 \end{equation}
-where \(p(\cdot)\) is a predictor and \(\mathrm{sg}\) denotes stop-gradient. Variance and covariance regularizers are included with weights \(0.05\) and \(0.005\), respectively, to reduce representation collapse. The final notebook uses AdamW with learning rate \(2\times 10^{-4}\), weight decay \(10^{-4}\), EMA momentum 0.996, mask ratio 0.35, base channels 32, latent channels 512, attention reduction 16, and token dimension 256.
+where \(p(\cdot)\) is the predictor and \(\mathrm{sg}\) denotes stop-gradient. Variance and covariance terms with weights 0.05 and 0.005 are used to discourage collapsed latent representations. The final configuration uses AdamW with learning rate \(2\times10^{-4}\), weight decay \(10^{-4}\), EMA momentum 0.996, mask ratio 0.35, base channels 32, latent channels 512, attention reduction 16, and token dimension 256.
 
-\subsection{Downstream Evaluation}
-Detection uses YOLO11n with image size 640, batch size 8, and 40 epochs. RGB, IR, and average YOLO checkpoints were loaded from prior successful Drive results rather than retrained. The proposed gate-blend YOLO model was trained on the corrected fused export. Segmentation uses U-Net with a MobileNetV2 encoder, ImageNet initialization, 9 classes, 480\(\times\)640 input, AdamW at \(10^{-4}\), batch size capped at 4, and 40 epochs. Proposed segmentation images are cached once and reused across epochs. The final code cell referenced in this submission is the Colab notebook \cite{kulusslu2026notebook}; the crucial correction is that A7 fusion metrics and downstream inputs are computed from Eq.~\eqref{eq:gateblend}, not from raw \texttt{fused\_img}.
+\subsection{Downstream Protocol and Ablation Scope}
+Detection uses YOLO11n with image size 640, batch size 8, and 40 epochs. The verified RGB, IR, and average checkpoints were loaded from prior successful runs, while the proposed YOLO run uses the corrected gate-blend export. Segmentation uses U-Net with a MobileNetV2 encoder, ImageNet initialization, 9 classes, 480\(\times\)640 input, AdamW at \(10^{-4}\), batch size at most 4, and 40 epochs.
+
+A3-A6 ablations were trained and evaluated with image-level fusion metrics only. Propagating A3-A6 through downstream YOLO and U-Net would require eight additional downstream trainings and fused-data exports, which were not part of the verified final run. Therefore, A3-A6 support architectural diagnosis at the fusion-metric level only; downstream conclusions are restricted to A0, A1, A2, and A7.
+
+\begin{table}[t]
+\centering
+\caption{Implementation cost information saved by the notebook. Controlled latency was not benchmarked, so no runtime claim is made.}
+\label{tab:cost}
+\begin{tabular}{lcc}
+\toprule
+Component & Total params & Trainable params \\
+\midrule
+Fusion image model & 10.90M & 10.90M \\
+CM-JEPA wrapper & 15.99M & 12.75M \\
+\bottomrule
+\end{tabular}
+\vspace{2pt}
+
+\footnotesize Checkpoint size for \texttt{best\_cm\_jepa.pt}: 61.1 MB. Fusion tensors are \(512\times32\times32\) for \(512\times512\) inputs.
+\end{table}
 
 \section{Experimental Results}
+\subsection{Training and Collapse Diagnostics}
+The notebook stores 30 CM-JEPA history rows and a checkpointed training curve (Fig.~\ref{fig:history}). The losses do not indicate simple divergence: the final training total is approximately 0.897, with a JEPA term near 0.037 and a fusion term near 0.839. Validation loss fluctuates, ending near 0.980 with a larger JEPA component. This pattern suggests that the issue is not only insufficient training time. The more precise diagnosis is a formulation and export limitation: the latent objective and raw decoder did not impose enough full-resolution semantic and boundary pressure to make the decoded image reliable. The gate-blend repair produced meaningful images, but it remained a coarse convex mixture rather than a task-aware dense representation.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figures/notebook_training_history.png}
+    \caption{Saved CM-JEPA training history from the reproducibility notebook. The curve supports a collapse diagnosis based on representation/export formulation rather than an obvious optimization divergence.}
+    \label{fig:history}
+\end{figure}
+
 \subsection{Qualitative Inspection}
-Qualitative inspection was important because the first raw proposed output collapsed into nearly uniform gray images. After replacing the raw decoder image with the gate-guided blend, the fused images preserved scene structure, road boundaries, headlights, vehicles, and thermal saliency. Fig.~\ref{fig:qual} shows representative baseline and proposed gate-blend visualizations extracted from the final notebook outputs.
+Qualitative inspection was necessary because the raw proposed decoder could produce nearly uniform gray images. The corrected gate-blend representation preserved road structure, vehicles, lamps, and thermal saliency. However, it also tended to behave like a smoothed, spatially gated mixture. This is visually acceptable for object localization but less appropriate for dense segmentation, where road edges, small structures, and class boundaries must remain sharp.
 
 \begin{figure*}[t]
     \centering
     \begin{subfigure}[b]{0.48\textwidth}
         \centering
         \includegraphics[width=\textwidth]{figures/qualitative_baseline_sample.png}
-        \caption{RGB, IR, average, and learned output examples from the notebook.}
+        \caption{RGB, IR, average, and raw learned output examples from the notebook.}
     \end{subfigure}\hfill
     \begin{subfigure}[b]{0.48\textwidth}
         \centering
         \includegraphics[width=\textwidth]{figures/qualitative_gateblend_sample.png}
         \caption{Corrected gate-blend comparison used for downstream experiments.}
     \end{subfigure}
-    \caption{Representative qualitative outputs. The corrected gate-blend output is visually meaningful and avoids the collapsed raw decoder image observed during debugging.}
+    \caption{Representative qualitative outputs. The gate-blend repair avoids the collapsed raw decoder image, but it does not guarantee preservation of fine segmentation boundaries.}
     \label{fig:qual}
 \end{figure*}
 
-\subsection{Object Detection Results}
-Table~\ref{tab:downstream} and Fig.~\ref{fig:downstream} summarize the downstream task results. For detection, average fusion achieved the best mAP@0.5 (0.7718) and mAP@0.5:0.95 (0.5115). The proposed CM-JEPA gate-blend method achieved mAP@0.5 = 0.7567 and mAP@0.5:0.95 = 0.5080. It is therefore slightly below average fusion but very close in stricter localization quality. It also improves over IR-only and exceeds RGB-only in mAP@0.5:0.95.
+\subsection{Downstream Perception}
+Table~\ref{tab:downstream} and Fig.~\ref{fig:downstream} summarize downstream results. Average fusion is the strongest method on all three task metrics. For detection, CM-JEPA gate-blend achieved mAP@0.5 = 0.7567 and mAP@0.5:0.95 = 0.5080, close to average fusion's 0.5115 strict mAP and higher than RGB-only's 0.4887. Thus, the learned gate preserved useful object-level saliency. For segmentation, CM-JEPA gate-blend achieved only 0.4774 mIoU, below RGB-only, IR-only, and average fusion.
 
 \begin{table}[t]
 \centering
-\caption{Downstream performance of RGB, IR, average fusion, and the final CM-JEPA gate-blend representation.}
+\caption{Downstream performance of RGB, IR, average fusion, and CM-JEPA gate-blend.}
 \label{tab:downstream}
 \begin{tabular}{lccc}
 \toprule
@@ -181,19 +201,19 @@ CM-JEPA gate-blend & 0.7567 & 0.5080 & 0.4774 \\
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{figures/figure_downstream_combined.pdf}
-    \caption{Downstream results. Average fusion is the best overall method, while CM-JEPA gate-blend is competitive in detection but weak in semantic segmentation.}
+    \caption{Downstream results. Average fusion is the strongest overall representation; CM-JEPA gate-blend is competitive in strict detection localization but weak for semantic segmentation.}
     \label{fig:downstream}
 \end{figure}
 
-\subsection{Semantic Segmentation Results}
-Segmentation reveals a different pattern. Average fusion again achieves the best score with mIoU = 0.5551, followed by RGB-only at 0.5307, IR-only at 0.4976, and CM-JEPA gate-blend at 0.4774. This indicates that the gate-blend representation preserved enough object saliency for detection but did not preserve fine-grained semantic boundaries and textures as effectively as the average baseline. This difference is central to the discussion: detection and segmentation do not require the same kind of visual information.
+\subsection{Segmentation Error Analysis}
+The segmentation gap is consistent with the design of the gate-blend representation. The learned gate is produced on a \(32\times32\) feature grid for \(512\times512\) fusion inputs and then upsampled. A single gate cell therefore summarizes a relatively large image region. This is sufficient for broad modality selection around vehicles or lamps, but it can blur exactly the boundaries that semantic segmentation requires, such as road-sidewalk, vehicle-road, vegetation-building, and sky-building transitions. Average fusion, although simple, preserves full-resolution RGB texture and IR intensity without imposing a learned low-resolution switching field. This explains why CM-JEPA remains close for detection but loses substantially in mIoU.
 
-\subsection{Ablation and Fusion-Quality Metrics}
-Table~\ref{tab:ablation} summarizes image-level fusion metrics. The repaired A7 row is particularly important. Before the repair, A7 had zero entropy, spatial frequency, and average gradient because the raw decoder output was being evaluated. After the repair, A7 values became normal and very close to average fusion: EN 6.8898 vs. 6.8732, SF 0.02834 vs. 0.02836, AG 0.01138 vs. 0.01141, and NMI mean 1.1635 vs. 1.1617. This confirms that the final A7 representation behaves similarly to average fusion at the image-statistics level, which is consistent with its near-average detection performance.
+\subsection{Ablation and Fusion Metrics}
+Table~\ref{tab:ablation} reports image-level metrics. The repaired A7 row is central: after replacing the raw decoder metric computation with the same gate-blend representation used downstream, A7 becomes close to average fusion in EN, SF, AG, and NMI. This confirms that the corrected representation is valid at the image-statistics level. It also exposes the limitation of those metrics: A7 and average fusion look nearly identical by EN/SF/AG/NMI, yet their segmentation mIoU differs by 0.0777.
 
 \begin{table*}[t]
 \centering
-\caption{Fusion-quality and ablation metrics. A3-A6 are fusion-only ablation variants; downstream YOLO/U-Net metrics were measured only for A0, A1, A2, and A7.}
+\caption{Fusion-quality and ablation metrics. A3-A6 are fusion-only ablations; downstream metrics were measured only for A0, A1, A2, and A7.}
 \label{tab:ablation}
 \begin{tabular}{llcccc}
 \toprule
@@ -211,48 +231,31 @@ A7 & Full CM-JEPA gate-blend & 6.8898 & 0.02834 & 0.01138 & 1.1635 \\
 \end{tabular}
 \end{table*}
 
-\begin{figure}[t]
-    \centering
-    \includegraphics[width=\columnwidth]{figures/figure_fusion_metrics.pdf}
-    \caption{Min-max normalized fusion-quality metrics. A7 becomes consistent with average fusion after the gate-blend metric repair.}
-    \label{fig:fusionmetrics}
-\end{figure}
-
-\subsection{Metric Correlation Analysis}
-A correlation analysis was performed between classical fusion metrics and downstream task metrics using the four methods that have both fusion and downstream measurements (A0, A1, A2, A7). Fig.~\ref{fig:corr} shows the updated Pearson correlations after the A7 repair. Because \(n=4\), the p-values are large and the correlations should not be interpreted as statistically conclusive. The qualitative conclusion is still informative: image-level fusion metrics are weak proxies for downstream utility. For example, A7 and average fusion have almost identical EN/SF/AG/NMI values, yet their segmentation mIoU differs substantially. Conversely, IR has high entropy but does not dominate downstream tasks.
+\subsection{Metric-Task Correlation}
+The correlation analysis uses only the four methods with both fusion metrics and downstream task metrics (A0, A1, A2, A7). It is therefore descriptive rather than statistically conclusive. The updated Pearson report after the A7 repair shows large p-values and unstable relationships. The qualitative message is nevertheless useful: image-level fusion statistics are weak proxies for task utility. High entropy does not imply high detection or segmentation performance, and near-identical EN/SF/AG/NMI does not imply near-identical mIoU.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=0.95\columnwidth]{figures/figure_correlation_heatmap.pdf}
-    \caption{Updated Pearson correlation report after A7 repair. With only four downstream-evaluated methods, the correlations are descriptive rather than statistically conclusive.}
+    \caption{Descriptive Pearson correlation report after the A7 repair. With only four downstream-evaluated methods, the analysis should not be interpreted as a statistical test.}
     \label{fig:corr}
 \end{figure}
 
 \section{Discussion}
-\subsection{What Worked}
-The first major finding is that RGB/IR fusion is useful. Average fusion outperformed RGB-only and IR-only in both detection and segmentation. This supports the basic premise of the project: visible and infrared imagery provide complementary information. The improvement is not massive, but it is consistent and meaningful. Detection mAP@0.5 improved from 0.7616 for RGB to 0.7718 for average fusion, and segmentation mIoU improved from 0.5307 to 0.5551.
+\subsection{Main Interpretation}
+The strongest empirical conclusion is that RGB/IR fusion is useful, but not all fusion is equally useful. Average fusion consistently improves over RGB-only and IR-only in both downstream tasks. This is scientifically important because it establishes that complementary visible and thermal information helped in the lightweight setting. At the same time, the learned CM-JEPA gate-blend model did not improve the overall result. Its advantage is narrower: it is close to average fusion for strict detection localization and improves over RGB-only on mAP@0.5:0.95, but it does not preserve dense semantic information well enough for segmentation.
 
-The second positive result is that the proposed CM-JEPA gate-blend model recovered from the raw-output failure and became detection-competitive. Its mAP@0.5:0.95 score of 0.5080 is nearly equal to average fusion's 0.5115 and higher than RGB-only's 0.4887. This means the learned gate can produce a representation with useful object-level saliency.
+\subsection{Relation to Learned SOTA Fusion}
+Compared with DenseFuse and CDDFuse, this project uses a simpler fused-image adapter and a smaller downstream-oriented protocol. Compared with SeAFusion, TarDAL, and MRFS, it does not train the fusion representation jointly with semantic or detection losses. That difference is likely decisive. Task-aware SOTA methods can receive direct gradients from segmentation or detection objectives, whereas the present CM-JEPA module is mainly trained through unsupervised fusion and latent prediction losses. Therefore, the result should not be read as evidence against learned IVIF in general. It is evidence that a task-agnostic gate-blend JEPA module is insufficient to beat a strong average-fusion baseline for both detection and segmentation.
 
-\subsection{What Did Not Work as Expected}
-The main hypothesis was that a learned attention-based CM-JEPA fusion model would outperform simple fusion. The results do not fully support that claim. Average fusion is the strongest overall method, and CM-JEPA gate-blend fails to improve semantic segmentation. This is a critical result, not an implementation failure. It suggests that adding attention and representation learning does not automatically improve downstream perception. For segmentation, preserving pixel-level semantic boundaries appears more important than generating a visually plausible blend.
+\subsection{Training Budget or Formulation Issue}
+The collapse diagnosis is primarily a formulation issue, with training budget as a secondary factor. Additional epochs might improve the learned gate or decoder, but they would not remove the central mismatch: the raw decoder is optimized without downstream semantic supervision, and the final gate operates at a coarse spatial resolution. The corrected gate-blend export is a reasonable repair because it uses a stable convex combination of the original modalities, but it also restricts the representation family. Future work should therefore emphasize task-aware objectives, full-resolution or edge-aware gates, bounded residual fusion, and explicit logging of final gate mean, variance, entropy, and saturation statistics.
 
-The A3-A6 ablation results also show that architectural complexity alone is not enough. These learned variants often have higher entropy than average fusion, but lower spatial frequency and average gradient. They were not downstream-evaluated because doing so would require additional YOLO/U-Net training for every ablation variant. Therefore, they should be interpreted as fusion-quality ablations only. The fair downstream comparison remains A0/A1/A2/A7.
-
-\subsection{Why Detection and Segmentation Behave Differently}
-Object detection requires object-level cues: cars, pedestrians, headlights, thermal silhouettes, and bounding-box scale. A fused image can help detection if it makes targets more salient even if some texture is smoothed. Semantic segmentation is stricter. It requires pixel-level class boundaries between road, vegetation, buildings, sky, vehicles, and other classes. A gate-blend image that is adequate for target localization can still damage dense semantic cues. This explains why CM-JEPA gate-blend was competitive for YOLO but weak for U-Net.
-
-\subsection{Why Classical Fusion Metrics Were Insufficient}
-Entropy, spatial frequency, average gradient, and mutual information describe image statistics, not task utility. The updated A7 row makes this clear: A7 and average fusion are nearly indistinguishable by EN/SF/AG/NMI, yet average fusion has much higher segmentation mIoU. Thus, fusion-quality metrics should be used as diagnostics, not as substitutes for downstream evaluation. This supports the original proposal's research gap: the relation between pixel-level fusion quality and task performance on lightweight models is weak and must be experimentally tested.
-
-\subsection{Implementation Lessons}
-The final code contains two important engineering corrections. First, detection continuation uses saved YOLO exports rather than relying on a fragile global manifest. This prevents MSRS text labels from being mistaken for M3FD detection labels. Second, the proposed representation uses gate-guided blending instead of the raw decoded fused image. The A7 fusion metrics were also repaired to use the same representation as YOLO and U-Net. Without this repair, A7 produced invalid zero-valued fusion metrics. These corrections are documented in the included reproducibility notebook \cite{kulusslu2026notebook}.
-
-\subsection{Limitations}
-There are several limitations. First, A3-A6 ablation variants were not propagated through full YOLO and U-Net downstream training due to time and compute cost. Second, the correlation analysis has only four downstream-evaluated methods, so statistical claims are limited. Third, although the dataset is real and multi-source, it still relies on aligned RGB/IR pairs. Misalignment would require additional registration or robustness mechanisms. Fourth, the project uses a 3-channel image adapter so that standard YOLO and U-Net can be reused; a feature-level fusion detector or segmenter could exploit RGB/IR structure more directly.
+\subsection{Limitations and Future Work}
+The main limitations are clear. A3-A6 ablations were not propagated through full downstream training, so their conclusions remain image-metric based. DenseFuse, CDDFuse, and other learned SOTA methods were not executed under the same YOLO/U-Net protocol, so this work does not claim SOTA comparison. The metric-task correlation uses only four downstream-evaluated methods and should be treated as descriptive. The experiments assume aligned RGB/IR pairs; sensor misalignment would require registration or robustness mechanisms. Future work should evaluate at least one learned SOTA fusion baseline through the same downstream protocol, train all ablation variants through YOLO and U-Net, add segmentation overlay failure cases, and incorporate downstream task losses into the fusion model.
 
 \section{Conclusion}
-This project evaluated cross-modal attention-based RGB/IR fusion with a CM-JEPA component for lightweight detection and segmentation. The final experiments show that RGB/IR fusion is beneficial, but the simplest average fusion is the strongest overall baseline. The proposed CM-JEPA gate-blend representation is detection-competitive and nearly matches average fusion in mAP@0.5:0.95, but it underperforms in semantic segmentation. The repaired A7 fusion metrics show that CM-JEPA gate-blend has image statistics close to average fusion, yet this does not translate into equal segmentation performance. The main conclusion is therefore nuanced: learned RGB/IR gate-blend fusion can be useful for object-level perception, but it does not automatically preserve dense semantic information. Future work should investigate task-aware training with segmentation/detection losses, feature-level downstream fusion, alignment robustness, and a larger downstream ablation set.
+This project evaluated CM-JEPA gate-blend RGB/IR fusion for lightweight detection and semantic segmentation. The final result is nuanced: fusion helps, but average fusion is the strongest overall method in the verified experiments. CM-JEPA gate-blend is competitive for object detection under mAP@0.5:0.95, but it underperforms for semantic segmentation because the gate-blend representation does not preserve dense boundary and texture information as effectively as average fusion. The repaired A7 protocol makes the evaluation internally consistent, and the descriptive correlation analysis shows why image-level fusion metrics cannot replace downstream testing. The most defensible next step is not merely to train longer, but to make the fusion model task-aware and to compare it against learned IVIF baselines under the same downstream protocol.
 
 \section*{Acknowledgment}
 The author used AI tools during the preparation of this study for code debugging assistance, experiment interpretation, writing organization, and LaTeX report drafting. The experimental design decisions, final code execution, result selection, and academic interpretation were reviewed and finalized by the author. Responsibility for the submitted content remains entirely with the author.

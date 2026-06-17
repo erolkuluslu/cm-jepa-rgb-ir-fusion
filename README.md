@@ -1,50 +1,22 @@
 # Cross-Modal JEPA Gate-Blend Fusion for Lightweight RGB/Infrared Perception
 
-This repository contains the final IEEE-style research package for a study of visible RGB and thermal infrared image fusion for lightweight object detection and semantic segmentation. The project evaluates whether a cross-modal attention fusion model with a JEPA-style representation objective can improve downstream perception under challenging visual conditions such as night, fog, rain, low light, and reduced contrast.
+This repository contains the final IEEE-style research package for **Cross-Modal JEPA Gate-Blend Fusion for Lightweight RGB/Infrared Detection and Semantic Segmentation**. The project studies whether paired visible RGB and thermal infrared images can improve lightweight downstream perception under difficult visual conditions such as night, fog, rain, low light, and reduced contrast.
 
-The main conclusion is deliberately nuanced: RGB/IR fusion is beneficial, but the simple average-fusion baseline is the strongest overall method in the final experiments. The proposed CM-JEPA gate-blend representation is competitive for object detection, especially under the stricter mAP@0.5:0.95 metric, but it does not preserve dense semantic information as well as average fusion for segmentation.
+The central empirical conclusion is intentionally conservative: **RGB/IR fusion is beneficial, but simple average fusion is the strongest overall representation in the verified experiments**. The proposed CM-JEPA gate-blend representation is competitive for strict object-detection localization, but it does not preserve dense semantic boundaries as effectively as average fusion for segmentation.
 
 ## Research Question
 
-Can a cross-modal attention fusion model, strengthened with patch/token-level JEPA pretraining, improve lightweight object detection and semantic segmentation compared with RGB-only, IR-only, and classical average-fusion baselines?
+Can a cross-modal attention fusion model, strengthened with patch/token-level JEPA pretraining, improve lightweight object detection and semantic segmentation compared with RGB-only, IR-only, and average-fusion baselines?
 
-## Contributions
+## Main Contributions
 
-- Built a complete RGB/IR fusion evaluation pipeline over 6025 aligned real image pairs from M3FD, MSRS, and RoadScene.
-- Compared RGB-only, IR-only, average fusion, learned attention fusion variants, and the final CM-JEPA gate-blend representation.
-- Evaluated fusion through downstream lightweight perception tasks instead of relying only on image-level fusion metrics.
-- Used YOLO11n for detection on M3FD and U-Net with a MobileNetV2 encoder for semantic segmentation on MSRS.
-- Repaired the final A7 evaluation protocol so that CM-JEPA metrics and downstream experiments use the same gate-guided RGB/IR blend rather than a collapsed raw decoder output.
+- Built a reproducible RGB/IR fusion evaluation pipeline over 6025 aligned image pairs from M3FD, MSRS, and RoadScene.
+- Evaluated RGB-only, IR-only, average fusion, learned attention ablations, and the final CM-JEPA gate-blend representation.
+- Used downstream task metrics rather than only image-level fusion metrics: YOLO11n for detection and U-Net/MobileNetV2 for segmentation.
+- Corrected the A7 evaluation protocol so CM-JEPA fusion metrics, YOLO inputs, and U-Net inputs all use the same gate-guided RGB/IR blend.
+- Reported the negative result transparently: average fusion outperformed the proposed learned method overall.
 
-## Method Overview
-
-The proposed method is a mid-level RGB/IR fusion approach. RGB and IR inputs are first encoded with separate modality-specific branches. Channel attention recalibrates each modality, a spatial gate estimates where each modality should dominate, and a JEPA-style latent prediction objective encourages cross-modal representation consistency.
-
-The final downstream representation is the gate-guided image-level blend:
-
-```text
-I_A7 = G_up * I_RGB + (1 - G_up) * rep(I_IR)
-```
-
-where `G_up` is the learned spatial gate upsampled to image resolution and `rep(I_IR)` is the infrared image replicated into three channels. This gate-blend representation is used consistently for YOLO detection, U-Net segmentation, and the repaired A7 fusion-quality metrics.
-
-## Dataset Summary
-
-The standardized manifest contains 6025 aligned RGB/IR pairs:
-
-| Dataset | Role in this study | Pair count |
-|---|---:|---:|
-| M3FD | Object detection with YOLO11n | 4280 |
-| MSRS | Semantic segmentation with U-Net/MobileNetV2 | 1524 |
-| RoadScene | Fusion-quality and general fusion analysis | 221 |
-
-The overall split contains 4215 training, 902 validation, and 908 test pairs. For the M3FD detection subset, the saved YOLO split contains 2994 training, 641 validation, and 645 test images for each evaluated representation.
-
-Raw datasets are not included in this repository. The reproducibility notebook documents the expected dataset structure and experiment pipeline.
-
-## Experimental Results
-
-### Downstream Perception
+## Final Downstream Results
 
 | Method | mAP@0.5 | mAP@0.5:0.95 | mIoU |
 |---|---:|---:|---:|
@@ -53,80 +25,163 @@ Raw datasets are not included in this repository. The reproducibility notebook d
 | Average fusion | **0.7718** | **0.5115** | **0.5551** |
 | CM-JEPA gate-blend | 0.7567 | 0.5080 | 0.4774 |
 
-Average fusion gives the best overall downstream performance. CM-JEPA gate-blend is close to average fusion in mAP@0.5:0.95 and improves over RGB-only under that stricter detection metric, but it underperforms for semantic segmentation.
+CM-JEPA gate-blend nearly matches average fusion for mAP@0.5:0.95, but the segmentation gap indicates loss of boundary and texture information.
 
-### Fusion-Quality and Ablation Metrics
+## Dataset Layout
 
-| Method | Description | EN | SF | AG | NMI mean |
-|---|---|---:|---:|---:|---:|
-| A0 | RGB-only | 6.2097 | 0.04021 | 0.01517 | 1.5336 |
-| A1 | IR-only | **7.6092** | 0.03879 | 0.01275 | 1.4436 |
-| A2 | Average fusion | 6.8732 | 0.02836 | 0.01141 | 1.1617 |
-| A3 | Concatenation, no gate | 7.3225 | 0.01873 | 0.01022 | 1.0744 |
-| A4 | No channel attention | 7.3275 | 0.01898 | 0.01038 | 1.0715 |
-| A5 | No spatial gate | 7.2397 | 0.01715 | 0.00916 | 1.0805 |
-| A6 | Full attention, no JEPA | 7.2156 | 0.01826 | 0.00976 | 1.0754 |
-| A7 | Full CM-JEPA gate-blend | 6.8898 | 0.02834 | 0.01138 | 1.1635 |
+Raw datasets are not included. The notebook expects data under:
 
-A3-A6 are fusion-quality ablations only. They were not propagated through full YOLO and U-Net downstream training because each downstream ablation would require additional detector and segmenter training.
+```text
+/content/data/rgb_ir_datasets/
+├── M3FD/
+├── MSRS/
+└── RoadScene/
+```
 
-## Interpretation
+The notebook standardizes dataset-specific folders into a common structure:
 
-The results support RGB/IR fusion for lightweight perception, but they also show that architectural complexity is not automatically beneficial. Average fusion consistently improves over RGB-only and IR-only in both detection and segmentation. CM-JEPA gate-blend produces useful object-level saliency for detection, but segmentation requires sharper class boundaries and fine spatial structure than the proposed gate-blend preserves.
+```text
+DATA_ROOT/
+├── M3FD/
+│   ├── visible/
+│   ├── infrared/
+│   ├── labels/          # original labels when present
+│   └── labels_yolo/     # converted YOLO txt labels
+├── MSRS/
+│   ├── visible/ or train/vi/
+│   ├── infrared/ or train/ir/
+│   └── masks/ or train/label/
+└── RoadScene/
+    ├── visible/
+    └── infrared/
+```
 
-The fusion-quality metrics also show a limitation of classical image-level evaluation. A7 and average fusion have very similar entropy, spatial frequency, average gradient, and normalized mutual information, yet their segmentation mIoU differs substantially. For this reason, this project treats image-level fusion metrics as diagnostics rather than substitutes for downstream perception benchmarks.
+The verified manifest contains:
+
+| Dataset | Role | Pairs |
+|---|---|---:|
+| M3FD | YOLO11n object detection | 4280 |
+| MSRS | U-Net/MobileNetV2 segmentation | 1524 |
+| RoadScene | fusion-quality and qualitative analysis | 221 |
+
+Overall split: 4215 train, 902 validation, 908 test.
+
+## Dependencies
+
+The notebook installs missing packages automatically, but the equivalent environment commands are:
+
+```bash
+pip install torch torchvision opencv-python pillow numpy pandas matplotlib
+pip install scikit-learn scikit-image tqdm ultralytics
+pip install segmentation-models-pytorch albumentations kornia gdown
+```
+
+The verified full run was designed for Google Colab with GPU acceleration. A smoke-test mode is included for local or quick validation.
+
+## Dataset Download Commands
+
+The notebook contains these commands internally. They are listed here so the expected data acquisition path is explicit.
+
+```bash
+gdown --folder https://drive.google.com/drive/folders/1H-oO7bgRuVFYDcMGvxstT1nmy0WF_Y_6 \
+  -O /content/data/rgb_ir_datasets/M3FD --remaining-ok
+
+git clone --depth 1 https://github.com/Linfeng-Tang/MSRS.git \
+  /content/data/rgb_ir_datasets/MSRS
+
+git clone --depth 1 https://github.com/jiayi-ma/RoadScene.git \
+  /content/data/rgb_ir_datasets/RoadScene
+```
+
+If the M3FD Google Drive folder is unavailable because of access or quota restrictions, manually place `M3FD_Detection.zip` and `M3FD_Fusion.zip` under:
+
+```text
+/content/data/rgb_ir_datasets/M3FD/
+```
+
+Then rerun the dataset standardization cells.
+
+## Reproduction Procedure
+
+Main executable artifact:
+
+```text
+reproducibility/CM_JEPA_Erol_Kuluslu_Final.ipynb
+```
+
+Recommended execution order:
+
+1. Run the environment and configuration cells.
+2. For a quick check, set `SMOKE_TEST = True` in `ProjectConfig` and run all modules.
+3. For the verified real-data pipeline, set `SMOKE_TEST = False`.
+4. Run dataset download, extraction, standardization, and manifest creation.
+5. Run CM-JEPA training or load the saved checkpoint:
+
+```python
+SKIP_JEPA_TRAINING = False   # train CM-JEPA from scratch
+SKIP_JEPA_TRAINING = True    # load best_cm_jepa.pt if already available
+```
+
+6. Keep the final export setting enabled:
+
+```python
+USE_GATE_GUIDED_FUSION_EXPORT = True
+```
+
+7. Run the YOLO11n detection module.
+8. Run the U-Net/MobileNetV2 segmentation module.
+9. Run ablation, A7 repair, correlation, and final artifact-generation modules.
+
+Important experiment-control defaults:
+
+```python
+FORCE_RETRAIN_BASELINE_YOLO = False
+TRAIN_MISSING_YOLO = True
+FORCE_RETRAIN_PROPOSED_GATE_YOLO = False
+TRAIN_MISSING_UNET = True
+TRAIN_MISSING_ABLATION = True
+```
+
+## Model Size and Diagnostics
+
+The notebook records the following model-size information:
+
+| Component | Total parameters | Trainable parameters |
+|---|---:|---:|
+| Fusion image model | 10.90M | 10.90M |
+| CM-JEPA wrapper | 15.99M | 12.75M |
+
+Additional saved diagnostics:
+
+- `best_cm_jepa.pt` checkpoint size: 61.1 MB.
+- CM-JEPA history rows: 30 epochs.
+- Fusion feature tensor: `512 x 32 x 32` for `512 x 512` inputs.
+- The raw decoder output can collapse visually; the final A7 representation therefore uses gate-guided RGB/IR blending.
+
+Controlled latency was not benchmarked, so this package does not make a runtime claim.
 
 ## Repository Contents
 
 ```text
 .
 ├── README.md
+├── REVISION_NOTES.md
 ├── main.tex
 ├── main.pdf
 ├── references.bib
-├── figures/
 ├── downstream_results.csv
 ├── fusion_ablation_metrics.csv
 ├── method_level_metrics_for_correlation.csv
+├── figures/
 ├── reproducibility/
 │   └── CM_JEPA_Erol_Kuluslu_Final.ipynb
 └── source_material/
     └── project_proposal.pdf
 ```
 
-The compiled PDF is included for convenient reading. LaTeX build artifacts such as `.aux`, `.log`, `.bbl`, and `.blg` are intentionally ignored.
-
-## Reproducibility
-
-The main executable artifact is:
-
-```text
-reproducibility/CM_JEPA_Erol_Kuluslu_Final.ipynb
-```
-
-The notebook is organized as a full research pipeline:
-
-- dataset overview and alignment diagnostics
-- environment and configuration setup
-- RGB/IR manifest creation
-- preprocessing and synthetic degradation
-- RGB-only, IR-only, average, early-integration, and Laplacian baselines
-- CM-JEPA fusion architecture and losses
-- fusion training, export, and qualitative inspection
-- YOLO11n detection evaluation
-- U-Net/MobileNetV2 segmentation evaluation
-- ablation, correlation analysis, and report artifact generation
-
-Two execution modes are documented in the notebook:
-
-- `SMOKE_TEST = True`: runs a small synthetic sanity-check pipeline.
-- `SMOKE_TEST = False`: runs the real RGB/IR datasets under the configured `DATA_ROOT`.
-
 ## Paper Build
 
-The IEEE-style report source is provided in `main.tex`, with references in `references.bib`.
-
-To rebuild the paper:
+To rebuild the IEEE-style PDF:
 
 ```bash
 pdflatex main.tex
@@ -144,30 +199,16 @@ pdflatex main.tex
 pdflatex main.tex
 ```
 
-The `figures/` directory contains the exported plots and qualitative samples referenced by the report.
+## Known Limitations
 
-## Key Limitations
-
-- A3-A6 ablation variants were evaluated with image-level fusion metrics only, not full downstream YOLO/U-Net training.
-- The metric-correlation analysis uses only four downstream-evaluated methods, so it is descriptive rather than statistically conclusive.
-- The experiments assume aligned RGB/IR pairs; sensor misalignment would require additional registration or robustness mechanisms.
-- The downstream models receive a three-channel fused image for compatibility. A detector or segmenter designed for feature-level RGB/IR fusion may exploit cross-modal structure more directly.
-
-## Citation
-
-If you use this project as a reference, please cite the repository and the included IEEE-style report:
-
-```bibtex
-@misc{kulusslu2026cmjepa,
-  author = {Erol Kuluslu},
-  title = {Cross-Modal JEPA Gate-Blend Fusion for Lightweight RGB/Infrared Detection and Semantic Segmentation},
-  year = {2026},
-  howpublished = {GitHub repository}
-}
-```
+- A3-A6 ablations were evaluated with fusion-quality metrics only, not full YOLO/U-Net downstream training.
+- DenseFuse, CDDFuse, and other learned SOTA methods were not executed through the same downstream protocol; they are discussed as contextual references, not reported as numeric baselines.
+- The metric-task correlation uses only four downstream-evaluated methods, so it is descriptive rather than statistically conclusive.
+- Final aggregate gate statistics were not exported; future work should log gate mean, variance, entropy, and saturation rates.
+- Segmentation failure cases should be expanded with prediction-mask overlays in a future revision.
 
 ## Author
 
-Erol Kuluslu  
+Erol Külüşlü  
 Department of Electrical-Electronics and Computer Engineering  
-Abdullah Gul University, Kayseri, Turkey
+Abdullah Gül University, Kayseri, Turkey
